@@ -1,6 +1,6 @@
 # Armageddon Plugin
 
-Standalone Paper plugin source for the custom Armageddon gameplay and world-management features running on Gimli.
+Standalone Paper plugin source for the custom Armageddon gameplay and world-management features running on our Oracle cloud free tier server.
 
 This repository contains only the plugin code and build scaffolding. It does **not** include live server data, player state, secrets, control-panel credentials, or host-specific operational scripts.
 
