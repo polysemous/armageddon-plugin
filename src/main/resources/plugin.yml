@@ -1,0 +1,73 @@
+name: Armageddon
+version: ${version}
+main: dev.codex.armageddon.ArmageddonPlugin
+api-version: '1.21'
+commands:
+  armageddon:
+    description: Summon aerial chaos around yourself or another player
+    usage: /armageddon [on <player>]
+    permission: armageddon.use
+  nuke:
+    description: Drop a world-ending TNT toward yourself or another player
+    usage: /nuke <code> [on <player>]
+    permission: armageddon.nuke
+  build:
+    description: Instantly place a simple structure for yourself or another player
+    usage: /build <house|cage|tower|arena|bunker|skybox|lava_trap> [on <player>]
+    permission: armageddon.build
+  maps:
+    description: List persistent maps that can be joined and reset independently
+    usage: /maps
+    permission: armageddon.joinmap
+  joinmap:
+    description: Join a persistent map and continue from its saved state
+    usage: /joinmap <clean_slate|fresh_survival|lobby|hogwarts|zombieapocalypse|greenfield>
+    permission: armageddon.joinmap
+  resetmap:
+    description: Reset a persistent map back to its pristine template with confirmation
+    usage: /resetmap <map> [confirm] [final]
+    permission: armageddon.resetmap
+  renew:
+    description: Rebuild the world back to the clean baseline state
+    usage: /renew
+    permission: armageddon.renew
+  followme:
+    description: Spawn a horse, pig, or chicken that follows you around
+    usage: /followme <horse|pig|chicken> [on <player>]
+    permission: armageddon.followme
+  game:
+    description: Toggle special server game modes
+    usage: /game effect <true|false>
+    permission: armageddon.game
+  spawnnukecode:
+    description: Hide the current nuclear launch code on a guarded sign somewhere in the world
+    usage: /spawnnukecode
+    permission: armageddon.spawnnukecode
+permissions:
+  armageddon.use:
+    description: Allows use of /armageddon
+    default: op
+  armageddon.nuke:
+    description: Allows use of /nuke
+    default: op
+  armageddon.build:
+    description: Allows use of /build
+    default: op
+  armageddon.joinmap:
+    description: Allows use of /maps and /joinmap
+    default: true
+  armageddon.resetmap:
+    description: Allows use of /resetmap
+    default: op
+  armageddon.renew:
+    description: Allows use of /renew
+    default: op
+  armageddon.followme:
+    description: Allows use of /followme
+    default: op
+  armageddon.game:
+    description: Allows use of /game
+    default: op
+  armageddon.spawnnukecode:
+    description: Allows use of /spawnnukecode
+    default: op
