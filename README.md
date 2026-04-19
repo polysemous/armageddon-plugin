@@ -1,4 +1,4 @@
-# Armageddon Plugin
+# Minecraft Armageddon Plugin
 
 Standalone Paper plugin source for the custom Armageddon gameplay and world-management features running on our Oracle cloud free tier server.
 
