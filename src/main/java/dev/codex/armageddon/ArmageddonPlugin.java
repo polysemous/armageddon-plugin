@@ -27,6 +27,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
+import org.bukkit.World.Environment;
 import org.bukkit.WorldType;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
@@ -51,6 +52,7 @@ import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.vehicle.VehicleMoveEvent;
 import org.bukkit.event.world.LootGenerateEvent;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -126,6 +128,11 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             "wind_charged"
     );
     private static final int GAME_EFFECT_HISTORY_SIZE = 30;
+    private static final double MINECART_BASELINE_SPEED = 0.4D;
+    private static final double MINECART_TARGET_MIN_SPEED = 3.0D;
+    private static final double MINECART_MAX_HORIZONTAL_SPEED = 80.0D;
+    private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.35D;
+    private static final double MINECART_MAX_BOOST_MULTIPLIER = 2.5D;
     private static final List<String> PERSISTENT_MAP_IDS = List.of(
             "greenfield",
             "hogwarts",
@@ -655,6 +662,11 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
 
         String remainder = message.substring(6).trim();
         if (remainder.isEmpty()) {
+            return;
+        }
+
+        if (handlePersistentWorldTimeCommand(player, world, remainder)) {
+            event.setCancelled(true);
             return;
         }
 
@@ -1201,10 +1213,12 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
                 creator.generateStructures(false);
             }
             case "fresh_survival" -> {
+                creator.environment(Environment.NORMAL);
                 creator.seed(FRESH_SURVIVAL_SEED);
                 creator.generateStructures(true);
             }
             case "lobby" -> {
+                creator.environment(Environment.NORMAL);
                 creator.type(WorldType.FLAT);
                 creator.generateStructures(false);
             }
@@ -1266,10 +1280,12 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
                 creator.generateStructures(false);
             }
             case "fresh_survival" -> {
+                creator.environment(Environment.NORMAL);
                 creator.seed(FRESH_SURVIVAL_SEED);
                 creator.generateStructures(true);
             }
             case "lobby" -> {
+                creator.environment(Environment.NORMAL);
                 creator.type(WorldType.FLAT);
                 creator.generateStructures(false);
             }
@@ -1482,6 +1498,7 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         world.setTime(6000L);
         world.setStorm(false);
         world.setThundering(false);
+        world.setSpawnLocation(0, world.getHighestBlockYAt(0, 0) + 1, 0);
     }
 
     private void configureLobby(World world) {
@@ -1563,6 +1580,39 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             return current;
         }
         return world.getSpawnLocation().add(0.5, 1.0, 0.5);
+    }
+
+    private boolean handlePersistentWorldTimeCommand(Player player, World world, String remainder) {
+        String[] parts = remainder.split("\\s+");
+        if (parts.length < 2 || !parts[0].equalsIgnoreCase("set")) {
+            return false;
+        }
+
+        Long mappedTime = mapTimeValue(parts[1]);
+        if (mappedTime == null) {
+            return false;
+        }
+
+        world.setTime(mappedTime);
+        player.sendMessage("Set " + world.getKey() + " time to " + parts[1] + ".");
+        return true;
+    }
+
+    private Long mapTimeValue(String token) {
+        String normalized = token.toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "day", "minecraft:day" -> 1000L;
+            case "noon", "minecraft:noon" -> 6000L;
+            case "night", "minecraft:night" -> 13000L;
+            case "midnight", "minecraft:midnight" -> 18000L;
+            default -> {
+                try {
+                    yield Long.parseLong(normalized);
+                } catch (NumberFormatException ex) {
+                    yield null;
+                }
+            }
+        };
     }
 
     private Location worldSafeSpawn(World world) {
@@ -2188,9 +2238,18 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         String worldName = currentWorld.getName();
         boolean shouldReapplyGameEffect = gameEffectModeEnabled
                 && (playerGameEffects.containsKey(playerId) || pendingRespawnGameEffects.contains(playerId));
+        Location personalRespawn = player.getRespawnLocation();
 
         if (protectedRespawns.remove(playerId)) {
             event.setRespawnLocation(worldSafeSpawn(currentWorld));
+            if (shouldReapplyGameEffect) {
+                scheduleGameEffectReapply(player);
+            }
+            return;
+        }
+
+        if (personalRespawn != null) {
+            event.setRespawnLocation(personalRespawn);
             if (shouldReapplyGameEffect) {
                 scheduleGameEffectReapply(player);
             }
@@ -2374,6 +2433,45 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             }
         }
         return sb.toString();
+    }
+
+    @EventHandler
+    public void onVehicleMove(VehicleMoveEvent event) {
+        Entity vehicle = event.getVehicle();
+        if (!(vehicle instanceof org.bukkit.entity.Minecart minecart)) {
+            return;
+        }
+
+        minecart.setMaxSpeed(MINECART_MAX_HORIZONTAL_SPEED);
+        minecart.setSlowWhenEmpty(false);
+
+        Vector velocity = minecart.getVelocity();
+        double horizontal = Math.hypot(velocity.getX(), velocity.getZ());
+        if (horizontal < 0.01D || horizontal >= MINECART_MAX_HORIZONTAL_SPEED) {
+            return;
+        }
+
+        double targetSpeed = Math.max(MINECART_TARGET_MIN_SPEED, horizontal * MINECART_MIN_BOOST_MULTIPLIER);
+        targetSpeed = Math.min(targetSpeed, Math.max(horizontal * MINECART_MAX_BOOST_MULTIPLIER, MINECART_TARGET_MIN_SPEED));
+        targetSpeed = Math.min(targetSpeed, MINECART_MAX_HORIZONTAL_SPEED);
+
+        if (targetSpeed <= horizontal + 0.01D) {
+            return;
+        }
+
+        double scale = targetSpeed / Math.max(horizontal, MINECART_BASELINE_SPEED);
+        Vector boosted = velocity.clone();
+        boosted.setX(boosted.getX() * scale);
+        boosted.setZ(boosted.getZ() * scale);
+
+        double boostedHorizontal = Math.hypot(boosted.getX(), boosted.getZ());
+        if (boostedHorizontal > MINECART_MAX_HORIZONTAL_SPEED) {
+            double capScale = MINECART_MAX_HORIZONTAL_SPEED / boostedHorizontal;
+            boosted.setX(boosted.getX() * capScale);
+            boosted.setZ(boosted.getZ() * capScale);
+        }
+
+        minecart.setVelocity(boosted);
     }
 
     @EventHandler
