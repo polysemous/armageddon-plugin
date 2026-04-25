@@ -133,7 +133,9 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
     private static final double MINECART_TARGET_MIN_SPEED = 1.25D;
     private static final double MINECART_MAX_HORIZONTAL_SPEED = 24.0D;
     private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.08D;
-    private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.35D;
+    private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.20D;
+    private static final double MINECART_RAIL_LOOKAHEAD_DISTANCE = 0.75D;
+    private static final double MINECART_CURVE_DAMPING_MULTIPLIER = 0.92D;
     private static final List<String> PERSISTENT_MAP_IDS = List.of(
             "greenfield",
             "hogwarts",
@@ -2241,16 +2243,16 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
                 && (playerGameEffects.containsKey(playerId) || pendingRespawnGameEffects.contains(playerId));
         Location personalRespawn = player.getRespawnLocation();
 
-        if (protectedRespawns.remove(playerId)) {
-            event.setRespawnLocation(worldSafeSpawn(currentWorld));
+        if (personalRespawn != null) {
+            event.setRespawnLocation(personalRespawn);
             if (shouldReapplyGameEffect) {
                 scheduleGameEffectReapply(player);
             }
             return;
         }
 
-        if (personalRespawn != null) {
-            event.setRespawnLocation(personalRespawn);
+        if (protectedRespawns.remove(playerId)) {
+            event.setRespawnLocation(worldSafeSpawn(currentWorld));
             if (shouldReapplyGameEffect) {
                 scheduleGameEffectReapply(player);
             }
@@ -2444,8 +2446,11 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         }
 
         Location loc = minecart.getLocation();
-        Block under = loc.getBlock().getRelative(BlockFace.DOWN);
-        if (under.getType() == Material.POWERED_RAIL) {
+        Block railBlock = loc.getBlock();
+        if (!isRail(railBlock.getType())) {
+            railBlock = loc.getBlock().getRelative(BlockFace.DOWN);
+        }
+        if (!isRail(railBlock.getType()) || railBlock.getType() == Material.POWERED_RAIL) {
             return;
         }
 
@@ -2458,9 +2463,28 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             return;
         }
 
+        Vector horizontalDirection = velocity.clone().setY(0);
+        if (horizontalDirection.lengthSquared() < 1.0E-6D) {
+            return;
+        }
+        horizontalDirection.normalize();
+
+        if (!hasRailAhead(loc, horizontalDirection)) {
+            return;
+        }
+
+        double maxAllowedSpeed = hasStraightRailAhead(loc, horizontalDirection)
+                ? MINECART_MAX_HORIZONTAL_SPEED
+                : Math.max(MINECART_TARGET_MIN_SPEED, MINECART_MAX_HORIZONTAL_SPEED * MINECART_CURVE_DAMPING_MULTIPLIER);
+        if (horizontal > maxAllowedSpeed) {
+            double dampScale = maxAllowedSpeed / horizontal;
+            minecart.setVelocity(new Vector(velocity.getX() * dampScale, velocity.getY(), velocity.getZ() * dampScale));
+            return;
+        }
+
         double targetSpeed = Math.max(MINECART_TARGET_MIN_SPEED, horizontal * MINECART_MIN_BOOST_MULTIPLIER);
         targetSpeed = Math.min(targetSpeed, Math.max(horizontal * MINECART_MAX_BOOST_MULTIPLIER, MINECART_TARGET_MIN_SPEED));
-        targetSpeed = Math.min(targetSpeed, MINECART_MAX_HORIZONTAL_SPEED);
+        targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
 
         if (targetSpeed <= horizontal + 0.01D) {
             return;
@@ -2472,13 +2496,41 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         boosted.setZ(boosted.getZ() * scale);
 
         double boostedHorizontal = Math.hypot(boosted.getX(), boosted.getZ());
-        if (boostedHorizontal > MINECART_MAX_HORIZONTAL_SPEED) {
-            double capScale = MINECART_MAX_HORIZONTAL_SPEED / boostedHorizontal;
+        if (boostedHorizontal > maxAllowedSpeed) {
+            double capScale = maxAllowedSpeed / boostedHorizontal;
             boosted.setX(boosted.getX() * capScale);
             boosted.setZ(boosted.getZ() * capScale);
         }
 
         minecart.setVelocity(boosted);
+    }
+
+    private boolean isRail(Material material) {
+        return material == Material.RAIL || material == Material.POWERED_RAIL || material == Material.DETECTOR_RAIL || material == Material.ACTIVATOR_RAIL;
+    }
+
+    private boolean hasRailAhead(Location loc, Vector direction) {
+        return isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE))
+                || isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE * 1.5D));
+    }
+
+    private boolean hasStraightRailAhead(Location loc, Vector direction) {
+        Vector sideways = new Vector(-direction.getZ(), 0, direction.getX());
+        return isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE))
+                && !isRailAt(sampleRailLocation(loc, sideways, 0.6D))
+                && !isRailAt(sampleRailLocation(loc, sideways.multiply(-1), 0.6D));
+    }
+
+    private Location sampleRailLocation(Location origin, Vector direction, double distance) {
+        return origin.clone().add(direction.clone().multiply(distance));
+    }
+
+    private boolean isRailAt(Location location) {
+        Block block = location.getBlock();
+        if (isRail(block.getType())) {
+            return true;
+        }
+        return isRail(block.getRelative(BlockFace.DOWN).getType());
     }
 
     @EventHandler
