@@ -129,10 +129,10 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
     );
     private static final int GAME_EFFECT_HISTORY_SIZE = 30;
     private static final double MINECART_BASELINE_SPEED = 0.4D;
-    private static final double MINECART_TARGET_MIN_SPEED = 3.0D;
-    private static final double MINECART_MAX_HORIZONTAL_SPEED = 80.0D;
-    private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.35D;
-    private static final double MINECART_MAX_BOOST_MULTIPLIER = 2.5D;
+    private static final double MINECART_TARGET_MIN_SPEED = 1.25D;
+    private static final double MINECART_MAX_HORIZONTAL_SPEED = 24.0D;
+    private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.08D;
+    private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.35D;
     private static final List<String> PERSISTENT_MAP_IDS = List.of(
             "greenfield",
             "hogwarts",
@@ -2459,7 +2459,7 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             return;
         }
 
-        double scale = targetSpeed / Math.max(horizontal, MINECART_BASELINE_SPEED);
+        double scale = targetSpeed / Math.max(horizontal, 0.01D);
         Vector boosted = velocity.clone();
         boosted.setX(boosted.getX() * scale);
         boosted.setZ(boosted.getZ() * scale);
