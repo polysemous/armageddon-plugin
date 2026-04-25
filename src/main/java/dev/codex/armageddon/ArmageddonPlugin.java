@@ -132,6 +132,7 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
     private static final double MINECART_BASELINE_SPEED = 0.4D;
     private static final double MINECART_TARGET_MIN_SPEED = 1.6D;
     private static final double MINECART_MAX_HORIZONTAL_SPEED = 24.0D;
+    private static final double MINECART_CURVE_MAX_SPEED = 1.35D;
     private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.10D;
     private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.25D;
     private static final double MINECART_TRACK_END_BRAKE_SPEED = 2.2D;
@@ -2482,6 +2483,16 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             return;
         }
 
+        Vector nextDirection = railDirectionFrom(to, nextRail, railDirection);
+        double turnDot = railDirection.dot(nextDirection);
+        if (turnDot < 0.999D) {
+            double capped = Math.min(horizontal, MINECART_CURVE_MAX_SPEED);
+            Vector curveVelocity = nextDirection.clone().multiply(capped);
+            curveVelocity.setY(velocity.getY());
+            minecart.setVelocity(curveVelocity);
+            return;
+        }
+
         double targetSpeed = Math.max(MINECART_TARGET_MIN_SPEED, horizontal * MINECART_MIN_BOOST_MULTIPLIER);
         targetSpeed = Math.min(targetSpeed, Math.max(horizontal * MINECART_MAX_BOOST_MULTIPLIER, MINECART_TARGET_MIN_SPEED));
         if (currentRail.getType() == Material.POWERED_RAIL) {
@@ -2522,6 +2533,15 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         }
         horizontal.normalize().multiply(targetSpeed);
         return new Vector(horizontal.getX(), velocity.getY(), horizontal.getZ());
+    }
+
+    private Vector railDirectionFrom(Location currentLocation, Block nextRail, Vector fallbackDirection) {
+        Location railCenter = nextRail.getLocation().add(0.5D, 0.0D, 0.5D);
+        Vector towardNext = railCenter.toVector().subtract(currentLocation.toVector()).setY(0);
+        if (towardNext.lengthSquared() < 1.0E-6D) {
+            return fallbackDirection.clone();
+        }
+        return towardNext.normalize();
     }
 
     @EventHandler
