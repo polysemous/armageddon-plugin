@@ -2454,9 +2454,6 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         if (currentRail == null) {
             return;
         }
-        if (currentRail.getType() == Material.POWERED_RAIL) {
-            return;
-        }
 
         minecart.setMaxSpeed(MINECART_MAX_HORIZONTAL_SPEED);
         minecart.setSlowWhenEmpty(false);
@@ -2487,6 +2484,9 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
 
         double targetSpeed = Math.max(MINECART_TARGET_MIN_SPEED, horizontal * MINECART_MIN_BOOST_MULTIPLIER);
         targetSpeed = Math.min(targetSpeed, Math.max(horizontal * MINECART_MAX_BOOST_MULTIPLIER, MINECART_TARGET_MIN_SPEED));
+        if (currentRail.getType() == Material.POWERED_RAIL) {
+            targetSpeed = Math.max(targetSpeed, MINECART_TARGET_MIN_SPEED);
+        }
         targetSpeed = Math.min(targetSpeed, MINECART_MAX_HORIZONTAL_SPEED);
         minecart.setVelocity(withHorizontalSpeed(alignedVelocity, targetSpeed));
     }
