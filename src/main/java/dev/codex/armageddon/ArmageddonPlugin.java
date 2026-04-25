@@ -130,12 +130,11 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
     );
     private static final int GAME_EFFECT_HISTORY_SIZE = 30;
     private static final double MINECART_BASELINE_SPEED = 0.4D;
-    private static final double MINECART_TARGET_MIN_SPEED = 1.25D;
+    private static final double MINECART_TARGET_MIN_SPEED = 1.6D;
     private static final double MINECART_MAX_HORIZONTAL_SPEED = 24.0D;
-    private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.08D;
-    private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.20D;
-    private static final double MINECART_RAIL_LOOKAHEAD_DISTANCE = 0.75D;
-    private static final double MINECART_CURVE_DAMPING_MULTIPLIER = 0.92D;
+    private static final double MINECART_MIN_BOOST_MULTIPLIER = 1.10D;
+    private static final double MINECART_MAX_BOOST_MULTIPLIER = 1.25D;
+    private static final double MINECART_TRACK_END_BRAKE_SPEED = 2.2D;
     private static final List<String> PERSISTENT_MAP_IDS = List.of(
             "greenfield",
             "hogwarts",
@@ -2445,12 +2444,17 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
             return;
         }
 
-        Location loc = minecart.getLocation();
-        Block railBlock = loc.getBlock();
-        if (!isRail(railBlock.getType())) {
-            railBlock = loc.getBlock().getRelative(BlockFace.DOWN);
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) {
+            return;
         }
-        if (!isRail(railBlock.getType()) || railBlock.getType() == Material.POWERED_RAIL) {
+
+        Block currentRail = railBlockAt(to);
+        if (currentRail == null) {
+            return;
+        }
+        if (currentRail.getType() == Material.POWERED_RAIL) {
             return;
         }
 
@@ -2458,79 +2462,66 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
         minecart.setSlowWhenEmpty(false);
 
         Vector velocity = minecart.getVelocity();
-        double horizontal = Math.hypot(velocity.getX(), velocity.getZ());
-        if (horizontal < 0.01D || horizontal >= MINECART_MAX_HORIZONTAL_SPEED) {
+        Vector railDirection = to.toVector().subtract(from.toVector()).setY(0);
+        if (railDirection.lengthSquared() < 1.0E-6D) {
+            railDirection = velocity.clone().setY(0);
+        }
+        if (railDirection.lengthSquared() < 1.0E-6D) {
+            return;
+        }
+        railDirection.normalize();
+
+        Vector alignedVelocity = alignHorizontalVelocityToRail(velocity, railDirection);
+        double horizontal = Math.hypot(alignedVelocity.getX(), alignedVelocity.getZ());
+        if (horizontal < 0.01D) {
+            minecart.setVelocity(alignedVelocity);
             return;
         }
 
-        Vector horizontalDirection = velocity.clone().setY(0);
-        if (horizontalDirection.lengthSquared() < 1.0E-6D) {
-            return;
-        }
-        horizontalDirection.normalize();
-
-        if (!hasRailAhead(loc, horizontalDirection)) {
-            return;
-        }
-
-        double maxAllowedSpeed = hasStraightRailAhead(loc, horizontalDirection)
-                ? MINECART_MAX_HORIZONTAL_SPEED
-                : Math.max(MINECART_TARGET_MIN_SPEED, MINECART_MAX_HORIZONTAL_SPEED * MINECART_CURVE_DAMPING_MULTIPLIER);
-        if (horizontal > maxAllowedSpeed) {
-            double dampScale = maxAllowedSpeed / horizontal;
-            minecart.setVelocity(new Vector(velocity.getX() * dampScale, velocity.getY(), velocity.getZ() * dampScale));
+        Block nextRail = railBlockAt(to.clone().add(railDirection.clone().multiply(1.1D)));
+        if (nextRail == null) {
+            double capped = Math.min(horizontal, MINECART_TRACK_END_BRAKE_SPEED);
+            minecart.setVelocity(withHorizontalSpeed(alignedVelocity, capped));
             return;
         }
 
         double targetSpeed = Math.max(MINECART_TARGET_MIN_SPEED, horizontal * MINECART_MIN_BOOST_MULTIPLIER);
         targetSpeed = Math.min(targetSpeed, Math.max(horizontal * MINECART_MAX_BOOST_MULTIPLIER, MINECART_TARGET_MIN_SPEED));
-        targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
-
-        if (targetSpeed <= horizontal + 0.01D) {
-            return;
-        }
-
-        double scale = targetSpeed / Math.max(horizontal, 0.01D);
-        Vector boosted = velocity.clone();
-        boosted.setX(boosted.getX() * scale);
-        boosted.setZ(boosted.getZ() * scale);
-
-        double boostedHorizontal = Math.hypot(boosted.getX(), boosted.getZ());
-        if (boostedHorizontal > maxAllowedSpeed) {
-            double capScale = maxAllowedSpeed / boostedHorizontal;
-            boosted.setX(boosted.getX() * capScale);
-            boosted.setZ(boosted.getZ() * capScale);
-        }
-
-        minecart.setVelocity(boosted);
+        targetSpeed = Math.min(targetSpeed, MINECART_MAX_HORIZONTAL_SPEED);
+        minecart.setVelocity(withHorizontalSpeed(alignedVelocity, targetSpeed));
     }
 
     private boolean isRail(Material material) {
         return material == Material.RAIL || material == Material.POWERED_RAIL || material == Material.DETECTOR_RAIL || material == Material.ACTIVATOR_RAIL;
     }
 
-    private boolean hasRailAhead(Location loc, Vector direction) {
-        return isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE))
-                || isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE * 1.5D));
-    }
-
-    private boolean hasStraightRailAhead(Location loc, Vector direction) {
-        Vector sideways = new Vector(-direction.getZ(), 0, direction.getX());
-        return isRailAt(sampleRailLocation(loc, direction, MINECART_RAIL_LOOKAHEAD_DISTANCE))
-                && !isRailAt(sampleRailLocation(loc, sideways, 0.6D))
-                && !isRailAt(sampleRailLocation(loc, sideways.multiply(-1), 0.6D));
-    }
-
-    private Location sampleRailLocation(Location origin, Vector direction, double distance) {
-        return origin.clone().add(direction.clone().multiply(distance));
-    }
-
-    private boolean isRailAt(Location location) {
+    private Block railBlockAt(Location location) {
         Block block = location.getBlock();
         if (isRail(block.getType())) {
-            return true;
+            return block;
         }
-        return isRail(block.getRelative(BlockFace.DOWN).getType());
+        Block below = block.getRelative(BlockFace.DOWN);
+        if (isRail(below.getType())) {
+            return below;
+        }
+        return null;
+    }
+
+    private Vector alignHorizontalVelocityToRail(Vector velocity, Vector railDirection) {
+        Vector horizontal = velocity.clone().setY(0);
+        double projection = horizontal.dot(railDirection);
+        Vector aligned = railDirection.clone().multiply(projection);
+        aligned.setY(velocity.getY());
+        return aligned;
+    }
+
+    private Vector withHorizontalSpeed(Vector velocity, double targetSpeed) {
+        Vector horizontal = velocity.clone().setY(0);
+        if (horizontal.lengthSquared() < 1.0E-6D) {
+            return velocity;
+        }
+        horizontal.normalize().multiply(targetSpeed);
+        return new Vector(horizontal.getX(), velocity.getY(), horizontal.getZ());
     }
 
     @EventHandler

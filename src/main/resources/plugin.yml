@@ -1,5 +1,5 @@
 name: Armageddon
-version: ${version}
+version: 1.8.2
 main: dev.codex.armageddon.ArmageddonPlugin
 api-version: '1.21'
 commands:
