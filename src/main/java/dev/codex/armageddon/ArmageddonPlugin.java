@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Iterator;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.World;
@@ -2439,6 +2440,12 @@ public final class ArmageddonPlugin extends JavaPlugin implements Listener, TabC
     public void onVehicleMove(VehicleMoveEvent event) {
         Entity vehicle = event.getVehicle();
         if (!(vehicle instanceof org.bukkit.entity.Minecart minecart)) {
+            return;
+        }
+
+        Location loc = minecart.getLocation();
+        Block under = loc.getBlock().getRelative(BlockFace.DOWN);
+        if (under.getType() == Material.POWERED_RAIL) {
             return;
         }
 
